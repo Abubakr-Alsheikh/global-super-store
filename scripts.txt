@@ -1,0 +1,202 @@
+-- =====================================================================
+-- ==                                                                 ==
+-- ==    COMPLETE ETL SCRIPT FOR GLOBAL SUPER STORE DATA WAREHOUSE    ==
+-- ==                                                                 ==
+-- =====================================================================
+-- This script performs all steps to build the database from scratch:
+-- 1. Creates the normalized transactional schema (tbl_ tables).
+-- 2. Creates the star schema for analytics (Dim_ and Fact_ tables).
+-- 3. Creates the staging table for raw data import.
+-- 4. Populates the normalized tables from the staging table (with data cleaning).
+-- 5. Populates the data warehouse (star schema) from the normalized tables.
+-- =====================================================================
+
+-- =====================================================================
+-- STEP 1: CREATE DATABASE STRUCTURES
+-- =====================================================================
+
+-- A. Create Normalized Transactional Tables (3NF)
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `tbl_categories` (
+  `CategoryID` INT NOT NULL AUTO_INCREMENT,
+  `CategoryName` VARCHAR(100) NOT NULL,
+  PRIMARY KEY (`CategoryID`), UNIQUE KEY `CategoryName_UNIQUE` (`CategoryName`)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS `tbl_subcategories` (
+  `SubCategoryID` INT NOT NULL AUTO_INCREMENT, `SubCategoryName` VARCHAR(100) NOT NULL, `CategoryID` INT NOT NULL,
+  PRIMARY KEY (`SubCategoryID`), INDEX `fk_subcategory_category_idx` (`CategoryID` ASC),
+  CONSTRAINT `fk_subcategory_category` FOREIGN KEY (`CategoryID`) REFERENCES `tbl_categories` (`CategoryID`)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS `tbl_products` (
+  `ProductID` VARCHAR(255) NOT NULL, `ProductName` TEXT NOT NULL, `SubCategoryID` INT NOT NULL,
+  PRIMARY KEY (`ProductID`), INDEX `fk_product_subcategory_idx` (`SubCategoryID` ASC),
+  CONSTRAINT `fk_product_subcategory` FOREIGN KEY (`SubCategoryID`) REFERENCES `tbl_subcategories` (`SubCategoryID`)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS `tbl_locations` (
+  `LocationID` INT NOT NULL AUTO_INCREMENT, `PostalCode` VARCHAR(20) NULL, `City` VARCHAR(100) NOT NULL,
+  `State` VARCHAR(100) NOT NULL, `Country` VARCHAR(100) NOT NULL, PRIMARY KEY (`LocationID`)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS `tbl_customers` (
+  `CustomerID` VARCHAR(255) NOT NULL, `CustomerName` VARCHAR(255) NOT NULL, `LocationID` INT NOT NULL,
+  PRIMARY KEY (`CustomerID`), INDEX `fk_customer_location_idx` (`LocationID` ASC),
+  CONSTRAINT `fk_customer_location` FOREIGN KEY (`LocationID`) REFERENCES `tbl_locations` (`LocationID`)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS `tbl_orders` (
+  `OrderID` VARCHAR(255) NOT NULL, `OrderDate` DATE NOT NULL, `ShipDate` DATE NULL, `ShipMode` VARCHAR(50) NULL,
+  `ShippingCost` DECIMAL(10, 2) NOT NULL DEFAULT 0.00, `OrderPriority` VARCHAR(50) NULL, `CustomerID` VARCHAR(255) NOT NULL,
+  PRIMARY KEY (`OrderID`), INDEX `fk_order_customer_idx` (`CustomerID` ASC),
+  CONSTRAINT `fk_order_customer` FOREIGN KEY (`CustomerID`) REFERENCES `tbl_customers` (`CustomerID`)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS `tbl_order_details` (
+  `OrderDetailID` INT NOT NULL AUTO_INCREMENT, `OrderID` VARCHAR(255) NOT NULL, `ProductID` VARCHAR(255) NOT NULL,
+  `Quantity` INT NOT NULL, `Discount` DECIMAL(4, 2) NOT NULL DEFAULT 0.00, `UnitPrice` DECIMAL(10, 2) NOT NULL, `TotalCost` DECIMAL(10, 2) NOT NULL,
+  PRIMARY KEY (`OrderDetailID`), UNIQUE KEY `order_product_unique` (`OrderID`, `ProductID`),
+  CONSTRAINT `fk_orderdetails_order` FOREIGN KEY (`OrderID`) REFERENCES `tbl_orders` (`OrderID`),
+  CONSTRAINT `fk_orderdetails_product` FOREIGN KEY (`ProductID`) REFERENCES `tbl_products` (`ProductID`)
+) ENGINE=InnoDB;
+
+
+-- B. Create Star Schema (Data Warehouse) Tables
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `Dim_Product` (
+  `ProductKey` INT NOT NULL AUTO_INCREMENT, `ProductID` VARCHAR(255) NOT NULL, `ProductName` TEXT NOT NULL,
+  `SubCategoryName` VARCHAR(100) NOT NULL, `CategoryName` VARCHAR(100) NOT NULL, PRIMARY KEY (`ProductKey`), UNIQUE KEY `ProductID_UNIQUE` (`ProductID`)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS `Dim_Location` (
+  `LocationKey` INT NOT NULL AUTO_INCREMENT, `PostalCode` VARCHAR(20) NULL, `City` VARCHAR(100) NOT NULL,
+  `State` VARCHAR(100) NOT NULL, `Country` VARCHAR(100) NOT NULL, PRIMARY KEY (`LocationKey`)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS `Dim_Time` (
+  `TimeKey` INT NOT NULL AUTO_INCREMENT, `FullDate` DATE NOT NULL, `Year` INT NOT NULL, `Quarter` VARCHAR(2) NOT NULL,
+  `MonthName` VARCHAR(20) NOT NULL, `DayOfWeek` VARCHAR(20) NOT NULL, PRIMARY KEY (`TimeKey`), UNIQUE KEY `FullDate_UNIQUE` (`FullDate`)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS `Fact_Sales` (
+  `SalesFactID` INT NOT NULL AUTO_INCREMENT, `ProductKey` INT NOT NULL, `LocationKey` INT NOT NULL, `TimeKey` INT NOT NULL,
+  `OrderID` VARCHAR(255) NOT NULL, `SalesAmount` DECIMAL(12, 4) NOT NULL, `Profit` DECIMAL(12, 4) NOT NULL,
+  `QuantitySold` INT NOT NULL, `ShippingCost` DECIMAL(10, 2) NOT NULL, PRIMARY KEY (`SalesFactID`),
+  INDEX `fk_fact_product_idx` (`ProductKey` ASC), INDEX `fk_fact_location_idx` (`LocationKey` ASC), INDEX `fk_fact_time_idx` (`TimeKey` ASC),
+  CONSTRAINT `fk_fact_product` FOREIGN KEY (`ProductKey`) REFERENCES `Dim_Product` (`ProductKey`),
+  CONSTRAINT `fk_fact_location` FOREIGN KEY (`LocationKey`) REFERENCES `Dim_Location` (`LocationKey`),
+  CONSTRAINT `fk_fact_time` FOREIGN KEY (`TimeKey`) REFERENCES `Dim_Time` (`TimeKey`)
+) ENGINE=InnoDB;
+
+
+-- C. Create Staging Table for Raw Data Import
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `staging_superstore` (
+  `RowID` INT, `OrderID` VARCHAR(255), `OrderDate` VARCHAR(255), `ShipDate` VARCHAR(255), `ShipMode` VARCHAR(255),
+  `CustomerID` VARCHAR(255), `CustomerName` VARCHAR(255), `Segment` VARCHAR(255), `City` VARCHAR(255), `State` VARCHAR(255),
+  `Country` VARCHAR(255), `PostalCode` VARCHAR(255), `Market` VARCHAR(255), `Region` VARCHAR(255), `ProductID` VARCHAR(255),
+  `Category` VARCHAR(255), `SubCategory` VARCHAR(255), `ProductName` TEXT, `Sales` DECIMAL(20, 5), `Quantity` INT,
+  `Discount` DECIMAL(10, 5), `Profit` DECIMAL(20, 5), `ShippingCost` DECIMAL(20, 5), `OrderPriority` VARCHAR(255)
+);
+
+-- =====================================================================
+-- STEP 2: LOAD & CLEAN DATA (ETL PROCESS)
+-- =====================================================================
+-- NOTE: Before running this step, you must manually import your CSV
+-- into the `staging_superstore` table using MySQL Workbench's
+-- "Table Data Import Wizard".
+-- ---------------------------------------------------------------------
+
+-- A. Populate Normalized Tables from Staging Table
+-- We TRUNCATE each table to ensure this script is re-runnable.
+-- ---------------------------------------------------------------------
+
+-- 1. Locations
+TRUNCATE TABLE tbl_locations;
+INSERT INTO tbl_locations (City, State, Country, PostalCode)
+SELECT DISTINCT City, State, Country, PostalCode FROM staging_superstore;
+
+-- 2. Customers (Handles Duplicates)
+TRUNCATE TABLE tbl_customers;
+INSERT INTO tbl_customers (CustomerID, CustomerName, LocationID)
+SELECT s.CustomerID, MIN(s.CustomerName), MIN(l.LocationID)
+FROM staging_superstore s JOIN tbl_locations l ON s.City = l.City AND s.State = l.State AND s.PostalCode <=> l.PostalCode
+GROUP BY s.CustomerID;
+
+-- 3. Categories
+TRUNCATE TABLE tbl_categories;
+INSERT INTO tbl_categories (CategoryName)
+SELECT DISTINCT Category FROM staging_superstore;
+
+-- 4. Sub-Categories
+TRUNCATE TABLE tbl_subcategories;
+INSERT INTO tbl_subcategories (SubCategoryName, CategoryID)
+SELECT DISTINCT s.SubCategory, c.CategoryID
+FROM staging_superstore s JOIN tbl_categories c ON s.Category = c.CategoryName;
+
+-- 5. Products (Handles Duplicates)
+TRUNCATE TABLE tbl_products;
+INSERT INTO tbl_products (ProductID, ProductName, SubCategoryID)
+SELECT s.ProductID, MIN(s.ProductName), MIN(sc.SubCategoryID)
+FROM staging_superstore s JOIN tbl_subcategories sc ON s.SubCategory = sc.SubCategoryName
+GROUP BY s.ProductID;
+
+-- 6. Orders (Handles Duplicates & Mixed Date Formats)
+TRUNCATE TABLE tbl_orders;
+INSERT INTO tbl_orders (OrderID, OrderDate, ShipDate, ShipMode, ShippingCost, OrderPriority, CustomerID)
+SELECT OrderID,
+    MIN(CASE WHEN OrderDate LIKE '%-%-%' THEN STR_TO_DATE(OrderDate, '%d-%m-%Y') ELSE STR_TO_DATE(OrderDate, '%m/%d/%Y') END),
+    MIN(CASE WHEN ShipDate LIKE '%-%-%' THEN STR_TO_DATE(ShipDate, '%d-%m-%Y') ELSE STR_TO_DATE(ShipDate, '%m/%d/%Y') END),
+    MIN(ShipMode), MIN(ShippingCost), MIN(OrderPriority), MIN(CustomerID)
+FROM staging_superstore GROUP BY OrderID;
+
+-- 7. Order Details (Handles Duplicates by Aggregating)
+TRUNCATE TABLE tbl_order_details;
+INSERT INTO tbl_order_details (OrderID, ProductID, Quantity, Discount, UnitPrice, TotalCost)
+SELECT OrderID, ProductID, SUM(Quantity), AVG(Discount),
+    CASE WHEN SUM(Quantity) = 0 THEN 0 ELSE (SUM(Sales) / SUM(Quantity)) / (1 - AVG(Discount)) END,
+    CASE WHEN SUM(Quantity) = 0 THEN 0 ELSE ((SUM(Sales) / SUM(Quantity)) / (1 - AVG(Discount))) - (SUM(Profit) / SUM(Quantity)) END
+FROM staging_superstore GROUP BY OrderID, ProductID;
+
+
+-- B. Populate Data Warehouse (Star Schema) from Normalized Tables
+-- ---------------------------------------------------------------------
+SET FOREIGN_KEY_CHECKS = 0;
+TRUNCATE TABLE Fact_Sales;
+TRUNCATE TABLE Dim_Location;
+TRUNCATE TABLE Dim_Product;
+TRUNCATE TABLE Dim_Time;
+SET FOREIGN_KEY_CHECKS = 1;
+
+-- 1. Dim_Location
+INSERT INTO Dim_Location (PostalCode, City, State, Country)
+SELECT PostalCode, City, State, Country FROM tbl_locations;
+
+-- 2. Dim_Product
+INSERT INTO Dim_Product (ProductID, ProductName, SubCategoryName, CategoryName)
+SELECT p.ProductID, p.ProductName, sc.SubCategoryName, c.CategoryName
+FROM tbl_products p JOIN tbl_subcategories sc ON p.SubCategoryID = sc.SubCategoryID JOIN tbl_categories c ON sc.CategoryID = c.CategoryID;
+
+-- 3. Dim_Time
+INSERT INTO Dim_Time (FullDate, `Year`, `Quarter`, MonthName, DayOfWeek)
+SELECT DISTINCT o.OrderDate, YEAR(o.OrderDate), CONCAT('Q', QUARTER(o.OrderDate)), MONTHNAME(o.OrderDate), DAYNAME(o.OrderDate)
+FROM tbl_orders o WHERE o.OrderDate IS NOT NULL ORDER BY o.OrderDate;
+
+-- 4. Fact_Sales
+INSERT INTO Fact_Sales (ProductKey, LocationKey, TimeKey, OrderID, SalesAmount, Profit, QuantitySold, ShippingCost)
+SELECT dp.ProductKey, dl.LocationKey, dt.TimeKey, od.OrderID,
+    (od.UnitPrice * od.Quantity * (1 - od.Discount)),
+    ((od.UnitPrice * od.Quantity * (1 - od.Discount)) - (od.TotalCost * od.Quantity)),
+    od.Quantity, o.ShippingCost
+FROM tbl_order_details AS od
+JOIN tbl_orders AS o ON od.OrderID = o.OrderID
+JOIN tbl_customers AS c ON o.CustomerID = c.CustomerID
+JOIN tbl_locations AS l ON c.LocationID = l.LocationID
+JOIN Dim_Product AS dp ON od.ProductID = dp.ProductID
+JOIN Dim_Location AS dl ON l.PostalCode <=> dl.PostalCode AND l.City = dl.City AND l.State = dl.State
+JOIN Dim_Time AS dt ON o.OrderDate = dt.FullDate;
+
+-- =====================================================================
+-- ==                         SCRIPT COMPLETE                           ==
+-- =====================================================================
