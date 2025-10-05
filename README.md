@@ -84,7 +84,7 @@ A map chart was created to visualize total sales in different states across the 
 
 * **Process:** The `Fact_Sales` table was used as the source. Sales (`SalesAmount`) were summed up and grouped by State (`Dim_Location.State`). Metabase's map visualization automatically rendered the data, with tooltips showing the state name and sales figures on hover.
 
-![Sales in USA Map Chart](https://raw.githubusercontent.com/Abubakr-Alsheikh/global-super-store/blob/main/images/sales-map.jpg)
+![Sales in USA Map Chart](https://raw.githubusercontent.com/Abubakr-Alsheikh/global-super-store/main/images/sales-map.jpg)
 
 ### b. Profits in USA Bubble Chart
 
@@ -92,7 +92,7 @@ A bubble chart (implemented as a Scatter Plot in Metabase) was created to analyz
 
 * **Process:** Data was grouped by State. The chart was configured with `Profit` on the x-axis, `ShippingCost` on the y-axis, and `QuantitySold` controlling the size of the bubble. This provides a multi-dimensional view of performance in each state.
 
-![Profits in USA Bubble Chart](https://raw.githubusercontent.com/Abubakr-Alsheikh/global-super-store/blob/main/images/profits-bubble-chart.jpg)
+![Profits in USA Bubble Chart](https://raw.githubusercontent.com/Abubakr-Alsheikh/global-super-store/main/images/profits-bubble-chart.jpg)
 
 ### c. Sales Trend in USA Line Chart
 
@@ -100,7 +100,7 @@ A line chart was created to show sales trends over the last four years for state
 
 * **Process:** Due to the complexity of the aggregate filter (`HAVING SUM(Sales) > 40000`), a **Native SQL Query** was written in Metabase. This query first identified the qualifying states and then pulled their monthly sales data to visualize the trend over time.
 
-![Profits in USA Bubble Chart](https://raw.githubusercontent.com/Abubakr-Alsheikh/global-super-store/blob/main/images/line-chart.jpg)
+![Profits in USA Bubble Chart](https://raw.githubusercontent.com/Abubakr-Alsheikh/global-super-store/main/images/line-chart.jpg)
 
 ### d. Interactive Dashboard: Sales and Profits in the USA
 
@@ -110,4 +110,4 @@ Finally, all three charts were combined into a single, interactive dashboard nam
 
 Finally, all three charts were combined into a single, interactive dashboard named "Sales and Profits in the USA".
 
-![Interactive Dashboard Screenshot](https://raw.githubusercontent.com/Abubakr-Alsheikh/global-super-store/blob/main/images/interactive-dashboard.jpg)
+![Interactive Dashboard Screenshot](https://raw.githubusercontent.com/Abubakr-Alsheikh/global-super-store/main/images/interactive-dashboard.jpg)
